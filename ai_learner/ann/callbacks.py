@@ -1,4 +1,4 @@
-from .utils import to_snake_case, get_class_name
+from ai_learner.utils.utils import to_snake_case, get_class_name
 import torch
 import os
 from os.path import join
@@ -129,27 +129,31 @@ class SimpleProgressBar(Callback):
         print(string)
 
 
+def change_learner_model_dir_name(learner):
+
+    best_score_str = str(learner.validation_phase.metrics_holder.main_metric_best_score)[:6]
+    model_dir_new_name = '_'.join([learner.model_name, best_score_str])
+    model_dir_new_path = join(learner.model_dir_root, model_dir_new_name)
+    model_dir_old_path = learner.model_dir_path
+
+    if not os.path.exists(model_dir_new_path):
+        shutil.move(model_dir_old_path, model_dir_new_path)
+    learner.model_dir_path = model_dir_new_path
+
+
 class SaveModel(Callback):
     def __init__(self, verbose=True):
         self.verbose = verbose
 
     def epoch_ended(self, learner, **kwargs):
 
-        best_score_str = str(learner.validation_phase.metrics_holder.main_metric_best_score)[:6]
-        curr_score_str = str(learner.validation_phase.metrics_holder.main_metric_curr_score)[:4]
+        change_learner_model_dir_name(learner)
+        learner.best_model_path = join(learner.model_dir_path, 'state_dict' + '.pt')
+        learner.last_model_path = join(learner.model_dir_path, 'state_dict_last' + '.pt')
 
-        model_dir_new_name = '_'.join([learner.model_name, best_score_str])
-        model_dir_new_path = join(learner.model_dir_root, model_dir_new_name)
-        model_dir_old_path = learner.model_dir_path
-
-        if not os.path.exists(model_dir_new_path):
-            shutil.move(model_dir_old_path, model_dir_new_path)
-        learner.model_dir_path = model_dir_new_path
-        learner.model_path = join(learner.model_dir_path, 'state_dict' + '.pt')
-
-        torch.save(learner.model.state_dict(), join(learner.model_dir_path, 'state_dict_last' + '.pt'))
+        learner.save_model(learner.last_model_path)
         if learner.validation_phase.metrics_holder.main_metric_improved:
-            torch.save(learner.model.state_dict(), learner.model_path)
+            learner.save_model(learner.best_model_path)
             if self.verbose:
                 print(f'main metric improved  -->  Saving model ...')
 

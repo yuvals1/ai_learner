@@ -1,12 +1,12 @@
 from ai_learner.utils.utils import to_snake_case, get_class_name
-import torch
-import os
 from os.path import join
-import shutil
 from collections import OrderedDict
 from tqdm import tqdm
 import time
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+import pandas as pd
+import plotly.express as px
+from .utils import change_learner_model_dir_name
 
 
 class Callback:
@@ -129,16 +129,16 @@ class SimpleProgressBar(Callback):
         print(string)
 
 
-def change_learner_model_dir_name(learner):
-
-    best_score_str = str(learner.validation_phase.metrics_holder.main_metric_best_score)[:6]
-    model_dir_new_name = '_'.join([learner.model_name, best_score_str])
-    model_dir_new_path = join(learner.model_dir_root, model_dir_new_name)
-    model_dir_old_path = learner.model_dir_path
-
-    if not os.path.exists(model_dir_new_path):
-        shutil.move(model_dir_old_path, model_dir_new_path)
-    learner.model_dir_path = model_dir_new_path
+class PlotHistory(Callback):
+    def epoch_ended(self, learner, **kwargs):
+        training_df = learner.training_phase.metrics_holder.epochs_df
+        training_df['phase'] = 'training'
+        validation_df = learner.validation_phase.metrics_holder.epochs_df
+        validation_df['phase'] = 'validation'
+        concat_df = pd.concat([training_df, validation_df], axis=0)
+        fig = px.line(concat_df, x="epoch", y="score", line_group='metric', color='metric', facet_row='phase',
+                      height=600)
+        fig.show()
 
 
 class SaveModel(Callback):
@@ -161,6 +161,9 @@ class SaveModel(Callback):
                                                            dir_path=learner.model_dir_path)
         learner.validation_phase.metrics_holder.save_history(filename='validation_history.csv',
                                                              dir_path=learner.model_dir_path)
+
+    def training_ended(self, learner, **kwargs):
+        learner.best_model_score = learner.validation_phase.metrics_holder.main_metric_best_score
 
 
 class ReduceLRCB(Callback):

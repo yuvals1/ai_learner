@@ -4,12 +4,12 @@ from os.path import join
 
 
 class MetricsHolder:
-    def __init__(self, metrics, main_metric):
+    def __init__(self, learner):
 
-        self.metrics = metrics
+        self.metrics = [learner.loss] + learner.metrics
         self.metrics_names = [metric.__name__ for metric in self.metrics]
 
-        self.main_metric_name = main_metric.__name__
+        self.main_metric_name = learner.main_metric.__name__
         self.main_metric_best_score = 0
         self.main_metric_curr_score = 0
         self.main_metric_improved = True
@@ -24,9 +24,10 @@ class MetricsHolder:
             self.batches_history[metric_name].append(metric(pr, gt).detach().item())
 
     def epoch_ended_update(self):
-        for metric, metric_name in zip(self.metrics, self.batches_history.keys()):
+        for metric_name in self.metrics_names:
             self.epochs_history[metric_name].append(np.mean(self.batches_history[metric_name]))
             self.batches_history[metric_name] = []
+
         self.update_main_metric_best_score()
         self.create_history_df()
 

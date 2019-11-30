@@ -12,25 +12,19 @@ def to_device(z, device):
     return z
 
 
-def unwrap_batch(batch, device, only_input=False):
-    if not only_input:
-        x, y = batch
-        x = to_device(x, device)
-        y = to_device(y, device)
-        return x, y
-    else:
-        x, name, dataset = batch
-        x = to_device(x, device)
-        return x, name, dataset
+def unwrap_batch(batch, device):
+    x, y = batch
+    x = to_device(x, device)
+    y = to_device(y, device)
+    return x, y
 
 
-def train_ann(epochs, model, loss, optimizer, training_phase, validation_phase,
-              callbacks, device='cuda', apex=True):
+def train_ann(learner, model, loss, optimizer, training_phase, validation_phase,
+              callbacks, epochs=100, device='cuda'):
 
-    finish_training = False
+    learner.finish_training = False
+    learner.continue_to_next_batch = False
     model.to(device)
-    if apex:
-        model, optimizer = amp.initialize(model, optimizer)
 
     callbacks.training_started()
 
@@ -48,12 +42,19 @@ def train_ann(epochs, model, loss, optimizer, training_phase, validation_phase,
                 x, y = unwrap_batch(batch, device)
 
                 with torch.set_grad_enabled(is_training):
+                    callbacks.before_forward_pass(gt=y)
+                    if learner.continue_to_next_batch:
+                        learner.continue_to_next_batch = False
+                        print('skipping batch....')
+                        continue
                     out = model(x)
+                    callbacks.after_forward_pass()
+
                     loss_score = loss(out, y)
 
                 if is_training:
                     optimizer.zero_grad()
-                    if apex:
+                    if learner.apex:
                         with amp.scale_loss(loss_score, optimizer) as scaled_loss:
                             scaled_loss.backward()
                     else:
@@ -63,6 +64,6 @@ def train_ann(epochs, model, loss, optimizer, training_phase, validation_phase,
                 callbacks.batch_ended(phase=phase, pr=out, gt=y, x=x)
             callbacks.phase_ended()
         callbacks.epoch_ended(epoch=epoch)
-        if finish_training:
+        if learner.finish_training:
             break
     callbacks.training_ended()

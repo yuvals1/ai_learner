@@ -2,8 +2,6 @@ import multiprocessing
 from torch.utils.data import DataLoader
 from ai_learner.ann.metrics_holder import MetricsHolder
 
-num_workers = multiprocessing.cpu_count() - 1
-
 
 class Phase:
     """
@@ -18,26 +16,16 @@ class Phase:
     def __init__(self, learner, name):
         self.learner = learner
         self.name = name
-
-        if self.name is not 'inference':
-            self.metrics_holder = MetricsHolder(learner=learner)
-
-    @property
-    def loader(self):
-        raise NotImplementedError
+        self.metrics_holder = NotImplemented
+        self.loader = NotImplemented
 
 
 class BasicPhase(Phase):
-    def __init__(self, learner, name, dataset, bs, shuffle):
+    def __init__(self, learner, name, loader):
         super().__init__(learner, name)
-        self.bs = bs
-        self.shuffle = shuffle
-        self.dataset = dataset
-        self._loader = DataLoader(self.dataset, batch_size=self.bs, shuffle=self.shuffle, num_workers=num_workers)
+        self.loader = loader
+        self.metrics_holder = MetricsHolder(learner=learner)
 
-    @property
-    def loader(self):
-        return self._loader
 
 
 

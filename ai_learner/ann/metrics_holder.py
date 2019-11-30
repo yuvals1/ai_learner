@@ -4,12 +4,12 @@ from os.path import join
 
 
 class MetricsHolder:
-    def __init__(self, learner):
+    def __init__(self, metrics, main_metric):
 
-        self.metrics = [learner.loss] + learner.metrics
+        self.metrics = metrics
         self.metrics_names = [metric.__name__ for metric in self.metrics]
 
-        self.main_metric_name = learner.main_metric.__name__
+        self.main_metric_name = main_metric.__name__
         self.main_metric_best_score = 0
         self.main_metric_curr_score = 0
         self.main_metric_improved = True

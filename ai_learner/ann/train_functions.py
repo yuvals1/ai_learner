@@ -20,13 +20,11 @@ def unwrap_batch(batch, device):
 
 
 def train_ann(learner, model, loss, optimizer, training_phase, validation_phase,
-              callbacks, epochs=100, device='cuda', apex=True):
+              callbacks, epochs=100, device='cuda'):
 
     learner.finish_training = False
     learner.continue_to_next_batch = False
     model.to(device)
-    if apex:
-        model, optimizer = amp.initialize(model, optimizer)
 
     callbacks.training_started()
 
@@ -56,7 +54,7 @@ def train_ann(learner, model, loss, optimizer, training_phase, validation_phase,
 
                 if is_training:
                     optimizer.zero_grad()
-                    if apex:
+                    if learner.apex:
                         with amp.scale_loss(loss_score, optimizer) as scaled_loss:
                             scaled_loss.backward()
                     else:

@@ -9,7 +9,7 @@ class MetricsHolder:
         self.metrics = metrics
         self.metrics_names = [metric.__name__ for metric in self.metrics]
 
-        self.main_metric_name = main_metric.__name__ if main_metric else metrics[0]
+        self.main_metric_name = main_metric.__name__ if main_metric else None
         self.main_metric_best_score = 0
         self.main_metric_curr_score = 0
         self.main_metric_improved = True
@@ -28,11 +28,12 @@ class MetricsHolder:
             self.epochs_history[metric_name].append(np.mean(self.batches_history[metric_name]))
             self.batches_history[metric_name] = []
 
-        self.update_main_metric_best_score()
+        if self.main_metric_name:
+            self.update_main_metric_best_score()
         self.create_history_df()
 
     def update_main_metric_best_score(self):
-        curr_score = self.epochs_history[self.main_metric_name][-1].item()
+        curr_score = self.epochs_history[self.main_metric_name][-1]  # item?
         self.main_metric_curr_score = curr_score
 
         if curr_score > self.main_metric_best_score:

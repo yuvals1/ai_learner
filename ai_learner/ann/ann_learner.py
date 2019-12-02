@@ -50,6 +50,12 @@ class AnnLearner(Learner):
     def save_model(self, path):
         save_torch_state_dict(self.model, path)
 
+    def load_best_model(self):
+        self.model.load(self.best_model_path)
+
+    def load_last_model(self):
+        self.model.load(self.last_model_path)
+
 
 
 

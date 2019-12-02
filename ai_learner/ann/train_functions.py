@@ -10,6 +10,9 @@ def to_device(z, device):
     else:
         raise ValueError('...')
     return z
+#
+# def to_device(z, device):
+#     return [item.to(device) for item in z]
 
 
 def unwrap_batch(batch, device):

@@ -1,4 +1,4 @@
-from .callbacks import Callback, CallbacksGroup
+from .callbacks import Callback, CallbacksGroup, EarlyStopping, ReduceLRCB, PlotHistory
 from .ann_learner import AnnLearner
 from .metrics_holder import MetricsHolder
 from .phases import Phase, BasicPhase

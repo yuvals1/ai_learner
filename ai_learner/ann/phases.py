@@ -24,7 +24,9 @@ class BasicPhase(Phase):
     def __init__(self, learner, name, loader):
         super().__init__(learner, name)
         self.loader = loader
-        self.metrics_holder = MetricsHolder(learner=learner)
+        metrics = [learner.loss] + learner.metrics
+        main_metric = learner.main_metric
+        self.metrics_holder = MetricsHolder(metrics, main_metric)
 
 
 

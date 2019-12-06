@@ -18,3 +18,6 @@ def change_learner_model_dir_name(learner):
     if not os.path.exists(model_dir_new_path):
         shutil.move(model_dir_old_path, model_dir_new_path)
     learner.model_dir_path = model_dir_new_path
+
+    learner.best_model_score = learner.validation_phase.metrics_holder.main_metric_best_score
+

@@ -8,7 +8,7 @@ from .utils import save_torch_state_dict
 
 
 class AnnLearner(Learner):
-    def __init__(self, model, loss=None, optimizer=None, metrics=None, apex=True):
+    def __init__(self, model, loss=None, optimizer=None, metrics=None, apex=True, device='cuda'):
         super().__init__(model)
         self.loss = loss
         self.optimizer = optimizer
@@ -19,8 +19,9 @@ class AnnLearner(Learner):
             self.metrics = None
 
         self.apex = apex
+        self.device = device
         if self.apex:
-            self.model, self.optimizer = amp.initialize(self.model.cuda(), self.optimizer)
+            self.model, self.optimizer = amp.initialize(self.model.to(self.device), self.optimizer)
 
         self.training_phase = None
         self.validation_phase = None
@@ -31,7 +32,7 @@ class AnnLearner(Learner):
         self.last_model_path = None
         self.best_model_score = None
 
-    def train(self, training_phase, validation_phase, callbacks=None, epochs=100, device='cuda'):
+    def train(self, training_phase, validation_phase, callbacks=None, epochs=100):
         if callbacks is None:
             callbacks = []
         callbacks = [MetricsCB(), SimpleProgressBar(), SaveModel(verbose=True)] + callbacks
@@ -42,7 +43,7 @@ class AnnLearner(Learner):
 
         train_ann(learner=self, model=self.model, loss=self.loss, optimizer=self.optimizer,
                   training_phase=training_phase, validation_phase=validation_phase, callbacks=callbacks,
-                  epochs=epochs, device=device)
+                  epochs=epochs, device=self.device)
 
     def infer(self, inference_phase, **kwargs):
         raise NotImplementedError

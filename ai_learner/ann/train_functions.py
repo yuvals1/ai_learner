@@ -45,7 +45,7 @@ def train_ann(learner, model, loss, optimizer, training_phase, validation_phase,
                 x, y = unwrap_batch(batch, device)
 
                 with torch.set_grad_enabled(is_training):
-                    callbacks.before_forward_pass(x=x, gt=y)
+                    callbacks.before_forward_pass(x=x, gt=y, phase=phase)
                     if learner.continue_to_next_batch:
                         learner.continue_to_next_batch = False
                         print('skipping batch....')

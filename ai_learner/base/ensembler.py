@@ -2,7 +2,7 @@ import cv2
 from os import listdir, makedirs
 from os.path import basename, join, exists
 import numpy as np
-
+from sklearn.cluster import DBSCAN
 
 class AugmentWrapper(object):
     def __init__(self, name):
@@ -127,15 +127,18 @@ class Ensembler(object):
                 pred = np.load(join(img_dir, pred_name))
                 img_preds.append(pred)
             img_preds = np.array(img_preds)
-            self.basic_ensemble(img_preds, img_name)
+            ensemble_pred = self.ensemble(img_preds)
+            self.save_prediction(ensemble_pred, img_name)
 
-    def basic_ensemble(self, preds, img_name):
-        pred = np.mean(preds, axis=0)
-        pred = np.argmax(pred, axis=2)
-        pred_loc = self.post_process(pred > 0)
-        pred_dmg = pred
-        cv2.imwrite(join(self.outs_dir, f'{img_name}_localization.png'), pred_loc*50)
-        cv2.imwrite(join(self.outs_dir, f'{img_name}_damage.png'), pred_dmg*50)
+    def ensemble(self, preds):
+        NotImplemented
+
+    def save_prediction(self, ensemble_pred, img_name):
+        ensemble_pred = np.argmax(ensemble_pred, axis=2)
+        pred_loc = self.post_process(ensemble_pred > 0)
+        pred_dmg = ensemble_pred
+        cv2.imwrite(join(self.outs_dir, f'{img_name}_localization.png'), pred_loc)
+        cv2.imwrite(join(self.outs_dir, f'{img_name}_damage.png'), pred_dmg)
 
     def post_process(self, probability_img, min_size=0):
         """
@@ -144,10 +147,86 @@ class Ensembler(object):
         """
         num_component, component = cv2.connectedComponents(probability_img.astype(np.uint8))
         predictions = np.zeros((1024, 1024), np.float32)
-        num = 0
         for c in range(1, num_component):
             p = (component == c)
             if p.sum() > min_size:
                 predictions[p] = 1
-                num += 1
         return predictions
+
+
+class BasicEnsembler(Ensembler):
+
+    def ensemble(self, preds):
+        ensemble_pred = np.mean(preds, axis=0)
+        return ensemble_pred
+
+
+class SatckingEnsembler(Ensembler):
+    def __init__(self, inps_dir, outs_dir, model):
+        super(SatckingEnsembler, self).__init__(inps_dir, outs_dir)
+        self.model = model
+
+    def ensemble(self, preds):
+        return self.model(preds)
+
+    def train_model(self, train_data, train_gt):
+        NotImplemented
+
+
+class AAAREnsembler(Ensembler):
+
+    def __init__(self, inps_dir, outs_dir, model):
+        super(AAAREnsembler, self).__init__(inps_dir, outs_dir)
+
+    @staticmethod
+    def seg_map_dist(map1, map2, nclasses=2):
+        rois = []
+        for i in range(nclasses):
+            imap1 = (map1 == i)
+            imap2 = (map2 == i)
+            union = np.sum(np.logical_or(imap1, imap2))
+            intersaction = np.sum(np.logical_and(imap1, imap2))
+            if union == 0:
+                rois.append(1.)
+            else:
+                rois.append(intersaction/union)
+        return np.mean(rois), rois
+
+
+    @staticmethod
+    def create_dist_matrix(preds, nclasses=2):
+        dist_mat = np.zeros((preds.shape[0], preds.shape[0]))
+        for i in range(preds.shape[0]):
+            for j in range(i + 1):
+                d, _ = AAAREnsembler.seg_map_dist(preds[i], preds[j], nclasses=nclasses)
+                dist_mat[i, j] = d
+                dist_mat[j, i] = d
+        return dist_mat
+
+
+    def sim2dist(self, X):
+        return 1/(0.01+X)
+
+
+    def cluster_predictions(self, preds):
+        X = AAAREnsembler.create_dist_matrix(preds, nclasses=5)
+        X = AAAREnsembler.sim2dist(X)
+        clustering = DBSCAN(eps=3, min_samples=5, metric='precomputed', n_jobs=-1).fit(X)
+        return clustering.labels_
+
+    def find_leader(self, preds):
+        nrows = preds.shape[1]
+        ncols = preds.shape[2]
+
+        leader = np.array([np.argmax(np.bincount(preds[:, i, j])) for i in range(nrows) for j in range(ncols)])\
+            .reshape(nrows, ncols)
+        return leader
+
+
+    def ensemble(self, preds):
+        clusters = np.array(AAAREnsembler.cluster_predictions(self, preds))
+        leaders = []
+        for i in set(clusters):
+            leaders.append(AAAREnsembler.find_leader(preds[clusters == i]))
+
+        return AAAREnsembler.find_leader(np.array(leaders))

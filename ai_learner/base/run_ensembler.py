@@ -20,7 +20,6 @@ models_dir = '/storage/xview2/project/models/'
 models = {}
 for model_name in listdir(models_dir):
     models[model_name] = torch.load(join(models_dir, model_name))
-    break
 
 folder = '/storage/xview2/project/xview_test/post/'
 imgs = listdir(folder)
@@ -45,5 +44,5 @@ aaar_ensembler = AAAREnsembler(inps_dir='/storage/xview2/project/infer_test/',
 
 
 inferer.infer_all_models()
-# basic_ensembler.predict_all()
+basic_ensembler.predict_all()
 aaar_ensembler.predict_all(single_process_flag=False)

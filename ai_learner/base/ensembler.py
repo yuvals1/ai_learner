@@ -186,8 +186,9 @@ class Inferer(object):
                      ]
 
     def __init__(self, models, predictions_dir, df, data_dir, input_img_folders,
-                 batch_size=1, num_workers=10, ttas=[], cuda_flag=False):
+                 batch_size=1, num_workers=22, ttas=[], cuda_flag=False):
         self.models = models
+        self.bs = batch_size
         self.device = 'cuda' if cuda_flag else 'cpu'
         for model_name in self.models:
             self.models[model_name].eval()
@@ -204,6 +205,7 @@ class Inferer(object):
                                 lambda x: x.permute(0, 3, 1, 2), #Change shape from h*w*c to c*h*w
                                 lambda x: (x - Inferer.IMAGENET_MEAN.to(self.device)) / Inferer.IMAGENET_STD.to(self.device)
                                 ]
+        self.img_num = len(self.df)
 
     def transform_tensor(self, tensor):
         for transformation in self.transformations:
@@ -220,11 +222,18 @@ class Inferer(object):
 
     def infer_all_models(self):
         softmax = torch.nn.Softmax(dim=1).to(self.device)
+        img_ran = 0
         for batch in self.dataloader:
+            print(f'Infer batches remaining : {int(np.ceil((self.img_num - img_ran) / self.bs))}\r')
+            img_ran += self.bs
             processes = []
             batch_imgs = [self.transform_tensor(x) for x in batch[0]]
             for model_name, model in self.models.items():
                 for augmentation in self.ttas:
+                    img_paths = [join(self.predictions_dir, img_name, f'{model_name}_{augmentation}.npy') 
+                                   for img_name in batch[1]]
+                    if all(map(exists, img_paths)):
+                        break
                     prediction_paths = [join(self.predictions_dir, img_name, f'{model_name}_{augmentation}')
                                         for img_name in batch[1]]
                     augmented_imgs = [augmentation.augment(img) for img in batch_imgs]
@@ -237,6 +246,7 @@ class Inferer(object):
                     processes.append(process)
             for process in processes:
                 process.join()
+
 
 
 class Ensembler(object):

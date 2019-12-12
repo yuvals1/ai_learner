@@ -1,12 +1,23 @@
 import cv2
 from os import listdir, makedirs
-from os.path import basename, join, exists, dirname
+from os.path import basename, join, exists, dirname, splitext
 import numpy as np
 import torch
 from sklearn.cluster import DBSCAN
 from torch.utils.data import Dataset, DataLoader
 import pandas as pd
 import os
+from threading import Thread
+import multiprocessing
+from multiprocessing import Process
+from contextlib import contextmanager
+
+
+@contextmanager
+def poolcontext(*args, **kwargs):
+    pool = multiprocessing.Pool(*args, **kwargs)
+    yield pool
+    pool.terminate()
 
 
 def get_img(img_name, folder_name, dataset, folder_path='/home/mmm/Desktop/XView_Project/data/images'):
@@ -26,9 +37,17 @@ def get_img(img_name, folder_name, dataset, folder_path='/home/mmm/Desktop/XView
 
 
 def torch2numpy(img):
-    img = img.permute(1, 2, 0)
-    img = img.detach().numpy()
+    img = img.permute(0, 2, 3, 1)
+    img = img.detach().cpu().numpy()
     return img
+
+def save_predictions(predictions, prediction_paths):
+    for i in range(len(prediction_paths)):
+        prediction_path = prediction_paths[i]
+        prediction_dir = dirname(prediction_path)
+        if not exists(prediction_dir):
+            makedirs(prediction_dir)
+        np.save(prediction_path, predictions[i])
 
 
 class ImagesDataset(Dataset):
@@ -166,8 +185,8 @@ class Inferer(object):
                      ComplexAugment([AugmentRotate(270), AugmentFlip()]),
                      ]
 
-    def __init__(self, models, predictions_dir, df_path, data_dir, input_img_folders,
-                 batch_size=1, num_workers=0, ttas=[], cuda_flag=False):
+    def __init__(self, models, predictions_dir, df, data_dir, input_img_folders,
+                 batch_size=1, num_workers=10, ttas=[], cuda_flag=False):
         self.models = models
         self.device = 'cuda' if cuda_flag else 'cpu'
         for model_name in self.models:
@@ -175,14 +194,15 @@ class Inferer(object):
             self.models[model_name].to(self.device)
         self.ttas = ttas
         self.predictions_dir = predictions_dir
-
-        self.dataset = ImagesDataset(csv_file=df_path, data_dir=data_dir,
+        self.df = self.prune_df(df)
+        print(f"Number of images to predict: {len(self.df)}")
+        self.dataset = ImagesDataset(csv_file=self.df, data_dir=data_dir,
                                      input_img_folders=input_img_folders)
         self.dataloader = DataLoader(self.dataset, batch_size=batch_size, num_workers=num_workers)
         self.transformations = [lambda x: x.to(self.device).float(),
                                 lambda x: x/255, #Normalization
                                 lambda x: x.permute(0, 3, 1, 2), #Change shape from h*w*c to c*h*w
-                                lambda x: (x - Inferer.IMAGENET_MEAN) / Inferer.IMAGENET_STD
+                                lambda x: (x - Inferer.IMAGENET_MEAN.to(self.device)) / Inferer.IMAGENET_STD.to(self.device)
                                 ]
 
     def transform_tensor(self, tensor):
@@ -190,53 +210,77 @@ class Inferer(object):
             tensor = transformation(tensor)
         return tensor
 
+    def is_img_exist(self, row):
+        prediction_paths = [join(self.predictions_dir, row['img_name'], f'{model_name}_{augmentation}.npy')
+                            for model_name, augmentation in zip(self.models.keys(), self.ttas)]
+        return not all(map(exists, prediction_paths))
+
+    def prune_df(self, df):
+        return df[df.apply(lambda x: self.is_img_exist(x), axis=1)]
+
     def infer_all_models(self):
         softmax = torch.nn.Softmax(dim=1).to(self.device)
-        for model_name, model in self.models.items():
-            for batch in self.dataloader:
-                batch_imgs = [self.transform_tensor(x) for x in batch[0]]
+        for batch in self.dataloader:
+            processes = []
+            batch_imgs = [self.transform_tensor(x) for x in batch[0]]
+            for model_name, model in self.models.items():
                 for augmentation in self.ttas:
                     prediction_paths = [join(self.predictions_dir, img_name, f'{model_name}_{augmentation}')
-                                       for img_name in batch[1]]
-                    if not all([exists(f'{x}.npy') for x in prediction_paths]):
-                        augmented_imgs = [augmentation.augment(img) for img in batch_imgs]
-                        with torch.no_grad():
-                            predictions = self.models[model_name](augmented_imgs)
-                        predictions = softmax(predictions)
-                        predictions = augmentation.reverse_augment(predictions)
-                        for i in range(len(prediction_paths)):
-                            prediction_path = prediction_paths[i]
-                            prediction_dir = dirname(prediction_path)
-                            if not exists(prediction_dir):
-                                makedirs(prediction_dir)
-                            np.save(prediction_path, torch2numpy(predictions[i]))
+                                        for img_name in batch[1]]
+                    augmented_imgs = [augmentation.augment(img) for img in batch_imgs]
+                    with torch.no_grad():
+                        predictions = self.models[model_name](augmented_imgs)
+                    predictions = softmax(predictions)
+                    predictions = augmentation.reverse_augment(predictions)
+                    process = Process(target=save_predictions, args=(torch2numpy(predictions), prediction_paths))
+                    process.start()
+                    processes.append(process)
+            for process in processes:
+                process.join()
 
 
 class Ensembler(object):
     def __init__(self, inps_dir, outs_dir):
         self.inps_dir = inps_dir
-        self.outs_dir = outs_dir
+        self.outs_dir = join(outs_dir, self.__class__.__name__)
+        if not exists(self.outs_dir):
+            makedirs(self.outs_dir)
 
-    def predict_all(self):
-        for img_name in listdir(self.inps_dir):
-            img_dir = join(self.inps_dir, img_name)
-            img_preds = []
-            for pred_name in listdir(img_dir):
-                pred = np.load(join(img_dir, pred_name))
-                img_preds.append(pred)
-            img_preds = np.array(img_preds)
-            ensemble_pred = self.ensemble(img_preds)
-            self.save_prediction(ensemble_pred, img_name)
+    def predict_all(self, single_process_flag):
+        if single_process_flag:
+            for img_name in listdir(self.inps_dir):
+                self.predict_img(img_name)
+        else:
+            with poolcontext(processes=5) as pool:
+                pool.map(self.predict_img, listdir(self.inps_dir))
+
+
+    def predict_img(self, img_name):
+        loc_img_name = '_localization_'.join(splitext(img_name)[0].split('_'))+'_prediction.png'
+        dmg_img_name = '_damage_'.join(splitext(img_name)[0].split('_'))+'_prediction.png'
+        loc_img_name = join(self.outs_dir, loc_img_name)
+        dmg_img_name = join(self.outs_dir, dmg_img_name)
+        if exists(loc_img_name) and exists(dmg_img_name):
+            return
+        img_dir = join(self.inps_dir, img_name)
+        img_preds = []
+        for pred_name in listdir(img_dir):
+            pred = np.load(join(img_dir, pred_name))
+            img_preds.append(pred)
+        img_preds = np.array(img_preds)
+        ensemble_pred = self.ensemble(img_preds)
+        self.save_prediction(ensemble_pred, loc_img_name, dmg_img_name)
+
 
     def ensemble(self, preds):
         NotImplemented
 
-    def save_prediction(self, ensemble_pred, img_name):
+    def save_prediction(self, ensemble_pred, loc_image, dmg_image):
         ensemble_pred = np.argmax(ensemble_pred, axis=2)
         pred_loc = self.post_process(ensemble_pred > 0)
         pred_dmg = ensemble_pred
-        cv2.imwrite(join(self.outs_dir, f'{img_name}_localization.png'), pred_loc)
-        cv2.imwrite(join(self.outs_dir, f'{img_name}_damage.png'), pred_dmg)
+        cv2.imwrite(loc_image, pred_loc)
+        cv2.imwrite(dmg_image, pred_dmg)
 
     def post_process(self, probability_img, min_size=0):
         """
@@ -330,6 +374,6 @@ class AAAREnsembler(Ensembler):
         clusters_set = set(clusters)
         pred = np.zeros(preds[0].shape)
         for cluster in clusters_set:
-            pred += np.mean(pred[clusters == cluster], axis=0)
+            pred += np.mean(preds[clusters == cluster], axis=0)
         pred = pred / len(clusters_set)
         return pred

@@ -3,6 +3,7 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/ai_learner.iml" filepath="$PROJECT_DIR$/.idea/ai_learner.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../segmentation_models.pytorch/.idea/segmentation_models.pytorch.iml" filepath="$PROJECT_DIR$/../segmentation_models.pytorch/.idea/segmentation_models.pytorch.iml" />
       <module fileurl="file://$PROJECT_DIR$/../xview2_mmm/.idea/xview2_mmm.iml" filepath="$PROJECT_DIR$/../xview2_mmm/.idea/xview2_mmm.iml" />
     </modules>
   </component>

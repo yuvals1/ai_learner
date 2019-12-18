@@ -1,10 +1,11 @@
+import torch
 from apex import amp
 
 from . import CallbacksGroup
 from .callbacks import SaveModel, SimpleProgressBar, MetricsCB
 from ..base.learner import Learner
 from .train_functions import train_ann
-from .utils import save_torch_state_dict
+from .utils import save_torch_state_dict, save_torch_model
 
 
 class AnnLearner(Learner):
@@ -29,7 +30,9 @@ class AnnLearner(Learner):
 
         # paths
         self.best_model_path = None
+        self.best_model_dict_path = None
         self.last_model_path = None
+        self.last_model_dict_path = None
         self.best_model_score = None
 
     def train(self, training_phase, validation_phase, callbacks=None, epochs=100):
@@ -48,16 +51,19 @@ class AnnLearner(Learner):
     def infer(self, inference_phase, **kwargs):
         raise NotImplementedError
 
-    def save_model(self, path):
+    def save_state_dict(self, path):
         save_torch_state_dict(self.model, path)
+
+    def save_model(self, path):
+        save_torch_model(self.model, path)
 
     def load_best_model(self):
         if self.best_model_path:
-            self.model.load(self.best_model_path)
+            self.model = torch.load(self.best_model_path)
 
     def load_last_model(self):
         if self.last_model_path:
-            self.model.load(self.last_model_path)
+            self.model = torch.load(self.last_model_path)
 
 
 

@@ -8,6 +8,10 @@ def save_torch_state_dict(model, path):
     torch.save(model.state_dict(), path)
 
 
+def save_torch_model(model, path):
+    torch.save(model, path)
+
+
 def change_learner_model_dir_name(learner):
 
     best_score_str = str(learner.validation_phase.metrics_holder.main_metric_best_score)[:6]

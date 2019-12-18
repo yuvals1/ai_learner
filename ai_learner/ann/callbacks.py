@@ -148,11 +148,16 @@ class SaveModel(Callback):
     def epoch_ended(self, learner, **kwargs):
 
         change_learner_model_dir_name(learner)
-        learner.best_model_path = join(learner.model_dir_path, 'state_dict' + '.pt')
-        learner.last_model_path = join(learner.model_dir_path, 'state_dict_last' + '.pt')
+        learner.best_model_path = join(learner.model_dir_path, 'best' + '.pt')
+        learner.best_model_dict_path = join(learner.model_dir_path, 'best_state_dict' + '.pt')
 
+        learner.last_model_path = join(learner.model_dir_path, 'last' + '.pt')
+        learner.last_model_dict_path = join(learner.model_dir_path, 'last_state_dict' + '.pt')
+
+        learner.save_state_dict(learner.last_model_dict_path)
         learner.save_model(learner.last_model_path)
         if learner.validation_phase.metrics_holder.main_metric_improved:
+            learner.save_state_dict(learner.best_model_dict_path)
             learner.save_model(learner.best_model_path)
             if self.verbose:
                 print(f'main metric improved  -->  Saving model ...')

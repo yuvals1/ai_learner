@@ -60,10 +60,12 @@ class AnnLearner(Learner):
     def load_best_model(self):
         if self.best_model_path:
             self.model = torch.load(self.best_model_path)
+            print('loaded best model')
 
     def load_last_model(self):
         if self.last_model_path:
             self.model = torch.load(self.last_model_path)
+            print('loaded last model')
 
 
 

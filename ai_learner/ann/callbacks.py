@@ -180,7 +180,6 @@ class ReduceLRCB(Callback):
         train_loss = learner.training_phase.metrics_holder.epochs_history[learner_loss_name][-1]
         self.scheduler.step(train_loss)
 
-
 class EarlyStopping(Callback):
     def __init__(self, patience=7, verbose=False):
         self.patience = patience
